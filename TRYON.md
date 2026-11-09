@@ -1,0 +1,126 @@
+# 虚拟试穿（AI 上身效果图）功能说明
+
+本仓库基于 [Anyesh/wardrowbe](https://github.com/Anyesh/wardrowbe)（MIT 协议）fork，
+在上游「衣橱管理 + AI 打标 + 每日搭配推荐」之外，新增了一个功能：
+
+> 上传一张自己的正面照 + 一件衣服（可从衣橱里挑），由**你自己的中转站图像模型**
+> 生成「你穿上这件衣服」的合成图，不限次数、按张计费、不依赖任何云端订阅。
+
+## 为什么要单独加
+
+- 上游开源版**不含**虚拟试穿；该功能只在官方 Cloud 版跑在 GPU 服务器上，且会员每月限量。
+- 本功能把出图能力做成**可配置的中转站调用**，与衣橱原本的打标/推荐 AI 完全分开：
+  两套 base_url / key / 模型互不干扰，你可以让打标继续用本地 Ollama，出图走中转站。
+- 不改动任何数据库结构（不需要 alembic 迁移），不写磁盘、不依赖新服务，
+  只在后端加了一个路由、一个服务层，前端加了一个页面。
+
+## 三条使用路线
+
+### 路线 A：只想马上看效果（零依赖，推荐先跑这个）
+
+不需要 Docker、不需要数据库、不需要 Node，只要有 Python 3.10+：
+
+```bash
+cp tryon/.env.example tryon/.env      # 填好 4 项，见下
+python tryon/serve.py                  # Windows 用 python
+```
+
+浏览器打开 http://127.0.0.1:8787 ，传两张图即可出图、下载。
+`tryon/.env` 已被 .gitignore 忽略，密钥不会进仓库。
+
+### 路线 B：完整系统里用（Docker Compose）
+
+在部署目录的 `.env` 里加：
+
+```ini
+TRYON_ENABLED=true
+TRYON_BASE_URL=https://你的中转站/v1
+TRYON_API_KEY=sk-...
+TRYON_MODEL=图像模型名
+TRYON_MODE=chat          # 或 images
+```
+
+然后照常 `docker compose up -d --build`（或 pull 后重启 backend）。
+侧边栏会出现「虚拟试穿」入口；也可直接调 API：
+
+```bash
+# 查看配置状态（不返回密钥）
+curl http://localhost:8000/api/v1/tryon/status
+
+# 生成（两张图用 base64）
+curl -X POST http://localhost:8000/api/v1/tryon/generate \
+  -H "Authorization: Bearer <你的JWT>" -H "Content-Type: application/json" \
+  -d '{"person_image":"<base64>","garment_image":"<base64>"}'
+```
+
+`docker-compose.yml` / `docker-compose.prod.yml` 的共享环境块已加好 `TRYON_*` 透传。
+交互式 API 文档在开发模式下见 `http://localhost:8000/docs`。
+
+### 路线 C：用 API / MCP / 脚本自己驱动
+
+后端是 FastAPI，`/openapi.json`、`/docs`、`/redoc` 全都有；
+`/api/v1/tryon/generate` 就是一个普通 REST 端点，可被任何脚本、Agent 调用。
+生成图以 base64 返回，调用方自行决定存哪、怎么展示。
+
+## 配置项
+
+| 变量 | 说明 | 默认 |
+| --- | --- | --- |
+| `TRYON_ENABLED` | 总开关 | `false` |
+| `TRYON_BASE_URL` | 中转站地址（一般带 `/v1`） | 空 |
+| `TRYON_API_KEY` | 中转站密钥 | 空 |
+| `TRYON_MODEL` | 支持出图的模型名 | 空 |
+| `TRYON_MODE` | `chat`（多模态图进图出）/ `images`（`/images/generations`） | `chat` |
+| `TRYON_ENDPOINT` | 路径不标准时填完整路径或 URL | 空 |
+| `TRYON_TIMEOUT` | 单次请求超时（秒） | `180` |
+| `TRYON_PROMPT` | 自定义指令，留空用内置中文默认 | 空 |
+| `TRYON_ALLOW_ENV_PROMPT` | 是否允许前端覆盖指令 | `true` |
+
+`chat` 与 `images` 覆盖绝大多数 OpenAI 兼容中转：
+
+- `chat`：`POST {base}/chat/completions`，两张图以 `image_url` 传入，
+  适合 gemini-image / nano-banana / gpt-4o-image 一类「对话式出图」模型。
+- `images`：`POST {base}/images/generations`，`image[]` 传参考图，
+  适合 gpt-image-* 一类。
+
+响应里的图片做了兼容解析：`b64_json` / `data:` URI / `inline_data` /
+markdown 图片 / 远程图片 URL 都能取到，尽量适配不同中转的返回格式。
+
+## 隐私与成本（务必看清）
+
+- **唯一新增的出站流量**：把「本人照片 + 衣服照片」以 base64 POST 到
+  `TRYON_BASE_URL` 指定的中转站。照片不会发给官方，也不会存到本项目磁盘。
+  指向谁、留存多久，取决于你选的中转站——这一点由你在配置里完全决定。
+- **费用**：按张计费，取决于中转站和模型（通常几美分到几毛人民币一张），
+  没有 50 次/月这类上限。可以先只跑一张确认效果与单价。
+- **默认关闭**：不配 `TRYON_*` 时功能完全不启用，其余衣橱功能不受任何影响。
+- 前端页面有「未配置」提示；`/tryon/status` 也不返回密钥。
+
+## 输入照片建议
+
+- 本人照：正面、光线均匀、背景干净、头到大腿可见、姿势简单。
+- 衣服照：平铺或挂拍的单件，图案完整；别用旅游合影里抠出来的一件。
+- 效果主要看输入质量，模型只是次要因素。
+
+## 本次改动清单
+
+新增：
+- `backend/app/schemas/tryon.py`、`backend/app/services/tryon_service.py`、`backend/app/api/tryon.py`
+- `frontend/app/dashboard/tryon/page.tsx`
+- `tryon/core.py`（出站调用核心，纯标准库）、`tryon/serve.py`（本地预览）、`tryon/.env.example`
+- 8 种语言 `frontend/messages/*/nav.json` 的 `tryOn` 文案
+
+修改：
+- `backend/app/config.py`（`TRYON_*` 设置）、`backend/app/api/router.py`（挂载路由）
+- `frontend/components/sidebar.tsx` / `mobile-sidebar.tsx` / `mobile-nav.tsx`（导航入口）
+- `.env.example`、`docker-compose.yml`、`docker-compose.prod.yml`（变量与透传）
+
+## 上游同步
+
+`upstream` 指向 https://github.com/Anyesh/wardrowbe.git ，
+功能改动集中在独立文件，后续可用 `git fetch upstream && git merge upstream/main` 跟上游更新，
+冲突面很小。上游若自带了虚拟试穿，可随时删掉本分支。
+
+## 协议
+
+沿用上游 MIT。本功能新增代码同样可自由使用/修改。

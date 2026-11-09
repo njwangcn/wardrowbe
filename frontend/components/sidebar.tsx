@@ -15,6 +15,7 @@ import {
   Users,
   Bell,
   HeartHandshake,
+  Wand2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTranslations } from 'next-intl';
@@ -27,6 +28,7 @@ export function Sidebar() {
     { name: t('dashboard'), href: '/dashboard', icon: Home },
     { name: t('wardrobe'), href: '/dashboard/wardrobe', icon: Shirt },
     { name: t('suggestOutfit'), href: '/dashboard/suggest', icon: Sparkles },
+    { name: t('tryOn'), href: '/dashboard/tryon', icon: Wand2 },
     { name: t('outfits'), href: '/dashboard/outfits', icon: LayoutGrid },
     { name: t('pairings'), href: '/dashboard/pairings', icon: Layers },
     { name: t('history'), href: '/dashboard/history', icon: History },

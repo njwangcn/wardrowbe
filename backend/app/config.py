@@ -171,6 +171,20 @@ class Settings(BaseSettings):
     bg_removal_url: str | None = Field(default=None)  # URL for http provider (e.g. withoutbg)
     bg_removal_api_key: str | None = Field(default=None)  # API key for http provider
 
+    # Virtual try-on (AI outfit rendering) via an OpenAI-compatible relay.
+    # Kept separate from the tagging/recommendation AI so image generation can be
+    # pointed at a different provider (e.g. a transit station) without touching
+    # the wardrobe's normal vision/text models. Left unconfigured = feature off.
+    tryon_enabled: bool = Field(default=False)
+    tryon_base_url: str = Field(default="")
+    tryon_api_key: str | None = Field(default=None)
+    tryon_model: str = Field(default="")
+    tryon_mode: str = Field(default="chat")  # "chat" (multimodal) or "images"
+    tryon_endpoint: str = Field(default="")  # optional full endpoint override
+    tryon_timeout: int = Field(default=180, ge=1)
+    tryon_prompt: str = Field(default="")
+    tryon_allow_env_prompt: bool = Field(default=True)
+
     @property
     def effective_ai_vision_enabled(self) -> bool:
         """Whether internal vision (auto-tagging) is active.
