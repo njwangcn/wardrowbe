@@ -9,13 +9,10 @@ if [ ! -f .env ]; then
   cp .env.example .env
 fi
 # 追加/覆盖预览所需项（幂等）
-apply() {  # apply KEY VALUE
+apply() {  # apply KEY VALUE —— 先删旧行再原样追加，避免 URL/密钥里的 & \ | 被 sed 当特殊字符
   local k="$1" v="$2"
-  if grep -q "^${k}=" .env; then
-    sed -i "s|^${k}=.*|${k}=${v}|" .env
-  else
-    printf '%s=%s\n' "$k" "$v" >> .env
-  fi
+  sed -i "/^${k}=/d" .env
+  printf '%s=%s\n' "$k" "$v" >> .env
 }
 
 # Codespaces 端口转发域名：NextAuth 回调与 CORS 要用它，不能是 localhost
