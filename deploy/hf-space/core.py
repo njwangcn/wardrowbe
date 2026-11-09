@@ -42,7 +42,7 @@ class TryOnConfig:
     base_url: str = ""
     api_key: str = ""
     model: str = ""
-    mode: str = "chat"                 # "chat" | "images"
+    mode: str = "chat"                 # "chat" | "images" | "edits"
     endpoint: str = ""                # optional full path override, e.g. /v1/images/edits
     proxy: str = ""                   # optional explicit proxy; env proxies are ignored by default
     timeout: int = 180
@@ -68,8 +68,8 @@ class TryOnConfig:
         missing = [k for k in ("base_url", "api_key", "model") if not getattr(self, k)]
         if missing:
             raise ValueError("缺少中转站配置: " + ", ".join("TRYON_" + k.upper() for k in missing))
-        if self.mode not in ("chat", "images"):
-            raise ValueError("TRYON_MODE 只能是 chat 或 images")
+        if self.mode not in ("chat", "images", "edits"):
+            raise ValueError("TRYON_MODE 只能是 chat / images / edits")
 
 
 class TransitError(RuntimeError):
@@ -110,8 +110,52 @@ def _post_json(cfg: TryOnConfig, url: str, payload: dict) -> dict:
 def _build_url(cfg: TryOnConfig) -> str:
     if cfg.endpoint:
         return cfg.endpoint if cfg.endpoint.startswith("http") else cfg.base_url + "/" + cfg.endpoint.lstrip("/")
-    path = "chat/completions" if cfg.mode == "chat" else "images/generations"
+    path = {"chat": "chat/completions", "images": "images/generations", "edits": "images/edits"}[cfg.mode]
     return cfg.base_url + "/" + path
+
+
+def _post_multipart(cfg: TryOnConfig, url: str, fields: dict, files: list[tuple[str, str, bytes]]) -> dict:
+    """POST multipart/form-data for image edit endpoints (stdlib only)."""
+    boundary = "----wardrowbe" + os.urandom(12).hex()
+    parts: list[bytes] = []
+    for key, value in fields.items():
+        parts.append(
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="{key}"\r\n\r\n'
+                f"{value}\r\n"
+            ).encode("utf-8")
+        )
+    for name, filename, content in files:
+        parts.append(
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="{name}"; filename="{filename}"\r\n'
+                f"Content-Type: image/png\r\n\r\n"
+            ).encode("utf-8")
+            + content
+            + b"\r\n"
+        )
+    parts.append(f"--{boundary}--\r\n".encode("utf-8"))
+    body = b"".join(parts)
+
+    headers = {
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+        "Authorization": "Bearer " + cfg.api_key,
+    }
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    try:
+        with _opener(cfg).open(req, timeout=cfg.timeout) as resp:
+            raw = resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", "replace")[:800]
+        raise TransitError(f"中转站返回 HTTP {e.code}: {detail}") from None
+    except urllib.error.URLError as e:
+        raise TransitError(f"无法连接中转站 ({url}): {e.reason}") from None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        raise TransitError("中转站返回的不是 JSON: " + raw[:400]) from None
 
 
 def _data_uri(b64: str, mime: str = "image/jpeg") -> str:
@@ -215,6 +259,14 @@ def generate(person_b64: str, garment_b64: str, cfg: TryOnConfig | None = None) 
     cfg = cfg or TryOnConfig.from_env()
     cfg.validate()
     url = _build_url(cfg)
-    payload = _payload(cfg, person_b64, garment_b64)
-    data = _post_json(cfg, url, payload)
+    if cfg.mode == "edits":
+        # /images/edits expects multipart with repeated `image[]` parts.
+        person = base64.b64decode(person_b64)
+        garment = base64.b64decode(garment_b64)
+        fields = {"model": cfg.model, "prompt": cfg.prompt, "n": "1", "size": cfg.size}
+        fields.update({k: str(v) for k, v in cfg.extra_body.items()})
+        files = [("image[]", "person.png", person), ("image[]", "garment.png", garment)]
+        data = _post_multipart(cfg, url, fields, files)
+    else:
+        data = _post_json(cfg, url, _payload(cfg, person_b64, garment_b64))
     return _extract_image(data, cfg)

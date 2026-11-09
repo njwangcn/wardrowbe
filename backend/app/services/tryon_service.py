@@ -139,6 +139,10 @@ class TryOnService:
         s = self.settings
         return bool(s.tryon_enabled and s.tryon_base_url and s.tryon_api_key and s.tryon_model)
 
+    def _mode(self) -> str:
+        mode = (self.settings.tryon_mode or "chat").lower()
+        return mode if mode in ("chat", "images", "edits") else "chat"
+
     def status_host(self) -> str | None:
         s = self.settings
         if not s.tryon_base_url:
@@ -152,7 +156,7 @@ class TryOnService:
             if s.tryon_endpoint.startswith("http"):
                 return s.tryon_endpoint
             return s.tryon_base_url.rstrip("/") + "/" + s.tryon_endpoint.lstrip("/")
-        path = "chat/completions" if s.tryon_mode == "chat" else "images/generations"
+        path = {"chat": "chat/completions", "images": "images/generations", "edits": "images/edits"}[self._mode()]
         return s.tryon_base_url.rstrip("/") + "/" + path
 
     def _build_payload(self, person_b64: str, garment_b64: str, prompt: str | None, size: str | None) -> dict:
@@ -161,7 +165,7 @@ class TryOnService:
         person = "data:image/jpeg;base64," + person_b64
         garment = "data:image/jpeg;base64," + garment_b64
 
-        if s.tryon_mode == "images":
+        if s.tryon_mode in ("images", "edits"):
             return {
                 "model": s.tryon_model,
                 "prompt": effective_prompt,
@@ -198,15 +202,24 @@ class TryOnService:
             )
         s = self.settings
         url = self._build_url()
-        payload = self._build_payload(person_b64, garment_b64, prompt, size)
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer " + (s.tryon_api_key or ""),
-        }
+        headers = {"Authorization": "Bearer " + (s.tryon_api_key or "")}
 
         try:
             async with httpx.AsyncClient(timeout=s.tryon_timeout, follow_redirects=True) as client:
-                resp = await client.post(url, headers=headers, json=payload)
+                if self._mode() == "edits":
+                    # /images/edits requires multipart with repeated image[] parts.
+                    payload = self._build_payload(person_b64, garment_b64, prompt, size)
+                    data_fields = {
+                        k: str(v) for k, v in payload.items() if k != "image"
+                    }
+                    files = [
+                        ("image[]", ("person.png", base64.b64decode(person_b64), "image/png")),
+                        ("image[]", ("garment.png", base64.b64decode(garment_b64), "image/png")),
+                    ]
+                    resp = await client.post(url, headers=headers, data=data_fields, files=files)
+                else:
+                    headers["Content-Type"] = "application/json"
+                    resp = await client.post(url, headers=headers, json=self._build_payload(person_b64, garment_b64, prompt, size))
         except httpx.RequestError as exc:
             raise TryOnError(f"无法连接中转站 ({url}): {exc}") from None
 

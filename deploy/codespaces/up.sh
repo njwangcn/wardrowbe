@@ -29,7 +29,7 @@ apply TRYON_ENABLED "${TRYON_ENABLED:-false}"
 apply TRYON_BASE_URL "${TRYON_BASE_URL:-}"
 apply TRYON_API_KEY "${TRYON_API_KEY:-}"
 apply TRYON_MODEL "${TRYON_MODEL:-}"
-apply TRYON_MODE "${TRYON_MODE:-chat}"
+apply TRYON_MODE "${TRYON_MODE:-edits}"
 
 echo "==> 等待 Docker daemon 就绪"
 for i in $(seq 1 60); do

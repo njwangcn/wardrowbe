@@ -186,7 +186,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     _load_env_file()
     cfg = TryOnConfig.from_env()
-    path = "chat/completions" if cfg.mode == "chat" else "images/generations"
+    path = {"chat": "chat/completions", "images": "images/generations", "edits": "images/edits"}.get(cfg.mode, "chat/completions")
     url = cfg.endpoint or ((cfg.base_url.rstrip("/") + "/" + path) if cfg.base_url else "-")
     prompt = cfg.prompt or DEFAULT_PROMPT
     print("虚拟试穿本地预览 · http://127.0.0.1:%d" % PORT)

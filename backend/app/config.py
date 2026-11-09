@@ -179,7 +179,7 @@ class Settings(BaseSettings):
     tryon_base_url: str = Field(default="")
     tryon_api_key: str | None = Field(default=None)
     tryon_model: str = Field(default="")
-    tryon_mode: str = Field(default="chat")  # "chat" (multimodal) or "images"
+    tryon_mode: str = Field(default="chat")  # "chat" (multimodal) | "images" | "edits" (multipart)
     tryon_endpoint: str = Field(default="")  # optional full endpoint override
     tryon_timeout: int = Field(default=180, ge=1)
     tryon_prompt: str = Field(default="")

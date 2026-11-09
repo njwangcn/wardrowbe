@@ -57,8 +57,9 @@
     <div><label>图像模型</label><input type="text" id="model" placeholder="gpt-image-1 / gemini-image / nano-banana ..."></div>
     <div><label>接口形态</label>
       <select id="mode">
+        <option value="edits">images/edits（multipart 两图，gpt-image 推荐）</option>
         <option value="chat">chat/completions（多模态图进图出）</option>
-        <option value="images">images/generations（image[] 参考图）</option>
+        <option value="images">images/generations（JSON image[]）</option>
       </select>
     </div>
     <div><label>自定义路径（可选）</label><input type="text" id="endpoint" placeholder="留空用标准路径"></div>
@@ -188,7 +189,21 @@ function buildPayload(c, p, g){
 }
 function buildUrl(c){
   if(c.endpoint) return c.endpoint.startsWith('http') ? c.endpoint : c.base+'/'+c.endpoint.replace(/^\/+/,'');
-  return c.base+'/'+(c.mode==='chat'?'chat/completions':'images/generations');
+  const p={chat:'chat/completions',images:'images/generations',edits:'images/edits'}[c.mode]||'chat/completions';
+  return c.base+'/'+p;
+}
+function b64ToBlob(b64, mime){
+  const bin=atob(b64), arr=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+  return new Blob([arr],{type:mime||'image/png'});
+}
+function buildEditsBody(c, p, g){
+  const fd=new FormData();
+  fd.append('model',c.model); fd.append('prompt',c.prompt);
+  fd.append('n','1'); fd.append('size','1024x1536');
+  fd.append('image[]', b64ToBlob(strip(p)), 'person.png');
+  fd.append('image[]', b64ToBlob(strip(g)), 'garment.png');
+  return fd;
 }
 function toDataUrl(bytes,mime){
   let bin=''; const chunk=0x8000;
@@ -203,9 +218,14 @@ document.getElementById('go').onclick = async ()=>{
   if(!P||!G){ err.textContent='请先上传两张图片。'; return; }
   btn.disabled=true; st.textContent='生成中，约 10–60 秒…'; document.getElementById('outCard').style.display='none';
   try{
-    const resp=await fetch(buildUrl(c),{ method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+c.key},
-      body:JSON.stringify(buildPayload(c,P,G)) });
+    let body, headers={'Authorization':'Bearer '+c.key};
+    if(c.mode==='edits'){
+      body=buildEditsBody(c,P,G);           // FormData，浏览器自己加 multipart boundary
+    } else {
+      headers['Content-Type']='application/json';
+      body=JSON.stringify(buildPayload(c,P,G));
+    }
+    const resp=await fetch(buildUrl(c),{ method:'POST', headers, body });
     const text=await resp.text();
     if(!resp.ok) throw new Error('HTTP '+resp.status+'：'+text.slice(0,500));
     let data; try{ data=JSON.parse(text); }catch(e){ throw new Error('中转站返回的不是 JSON：'+text.slice(0,300)); }

@@ -23,8 +23,8 @@ short_description: 上传本人照 + 衣服照，用你自己的中转站图像�
 | --- | --- | --- |
 | `TRYON_BASE_URL` | 中转站地址，一般带 `/v1` | `https://your-relay.example.com/v1` |
 | `TRYON_API_KEY` | 中转站密钥 | `sk-...` |
-| `TRYON_MODEL` | 支持出图的模型名 | `gpt-image-1` / gemini-image / nano-banana 类中转模型 |
-| `TRYON_MODE` | `chat`（多模态图进图出，默认）或 `images`（`/images/generations`） | `chat` |
+| `TRYON_MODEL` | 支持出图的模型名 | `gpt-image-2.6-sunburst` / `gpt-image-2.5-sunburst` |
+| `TRYON_MODE` | `edits`（`/images/edits` multipart 两图，gpt-image-2.x 推荐）/ `chat`（多模态图进图出）/ `images`（`/images/generations`） | `edits` |
 
 可选：`TRYON_ENDPOINT`（非标准路径）、`TRYON_PROMPT`（自定义指令）、`TRYON_TIMEOUT`、`TRYON_PROXY`。
 

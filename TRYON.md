@@ -70,18 +70,23 @@ curl -X POST http://localhost:8000/api/v1/tryon/generate \
 | `TRYON_BASE_URL` | 中转站地址（一般带 `/v1`） | 空 |
 | `TRYON_API_KEY` | 中转站密钥 | 空 |
 | `TRYON_MODEL` | 支持出图的模型名 | 空 |
-| `TRYON_MODE` | `chat`（多模态图进图出）/ `images`（`/images/generations`） | `chat` |
+| `TRYON_MODE` | `chat`（多模态图进图出）/ `images`（`/images/generations` JSON）/ `edits`（`/images/edits` multipart 两图，gpt-image-2.x **推荐**，2.6-sunburst 实测通过） | `edits` |
 | `TRYON_ENDPOINT` | 路径不标准时填完整路径或 URL | 空 |
 | `TRYON_TIMEOUT` | 单次请求超时（秒） | `180` |
 | `TRYON_PROMPT` | 自定义指令，留空用内置中文默认 | 空 |
 | `TRYON_ALLOW_ENV_PROMPT` | 是否允许前端覆盖指令 | `true` |
 
-`chat` 与 `images` 覆盖绝大多数 OpenAI 兼容中转：
+三种形态覆盖绝大多数 OpenAI 兼容中转：
 
+- `edits`：**`POST {base}/images/edits`**，multipart 里重复 `image[]` 传两张参考图，
+  是 gpt-image-2.x 官方图生图接口。已在 `gpt-image-2.6-sunburst` 上实测两图出图成功
+  （1254×1254 PNG）。**虚拟试穿优先用这个**。
+- `images`：`POST {base}/images/generations`，JSON 里 `image[]` 传参考图。
 - `chat`：`POST {base}/chat/completions`，两张图以 `image_url` 传入，
-  适合 gemini-image / nano-banana / gpt-4o-image 一类「对话式出图」模型。
-- `images`：`POST {base}/images/generations`，`image[]` 传参考图，
-  适合 gpt-image-* 一类。
+  返回 markdown data URI 图片，适合 gemini-image / nano-banana 一类「对话式出图」模型。
+
+> 中转站的模型白名单各不相同，换 key 后用 `GET {base}/models` 看实际开放的模型名
+> （本次三个 key 分别开放 1 / 7 / 372 个模型，只有第三个含 `gpt-image-2.6-sunburst`）。
 
 响应里的图片做了兼容解析：`b64_json` / `data:` URI / `inline_data` /
 markdown 图片 / 远程图片 URL 都能取到，尽量适配不同中转的返回格式。
