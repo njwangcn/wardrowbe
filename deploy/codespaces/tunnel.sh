@@ -46,4 +46,15 @@ if [ -z "${URL:-}" ]; then
 fi
 
 echo "公网地址：$URL"
+
+# NextAuth v4 必须知道自己的外部域名，否则登录回调会跳回 localhost/github.dev。
+# 这里把 .env 里的 NEXTAUTH_URL 换成隧道地址，并重启前端让配置生效。
+if [ -f .env ] && command -v docker >/dev/null 2>&1; then
+  sed -i "/^NEXTAUTH_URL=/d" .env
+  printf 'NEXTAUTH_URL=%s\n' "$URL" >> .env
+  echo "==> 同步 NEXTAUTH_URL 并重启前端"
+  docker compose -f docker-compose.preview.yml up -d frontend >/dev/null 2>&1 || true
+  echo "完成，几十秒后即可用上面地址登录。"
+fi
+
 echo "（这个进程只在本容器里活着，Codespace 重启后需重新执行本脚本）"
