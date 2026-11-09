@@ -1,0 +1,27 @@
+{
+  "name": "Wardrowbe 预览（含虚拟试穿）",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "moby": true
+    }
+  },
+  "forwardPorts": [3000, 8000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Wardrowbe 界面",
+      "onAutoForward": "openPreview"
+    },
+    "8000": {
+      "label": "API 文档 /docs"
+    }
+  },
+  "postCreateCommand": "bash deploy/codespaces/up.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-azuretools.vscode-docker"]
+    }
+  },
+  "remoteUser": "root"
+}

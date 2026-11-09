@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>虚拟试穿 · 静态预览</title>
+<style>
+  :root{color-scheme:light dark}
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.6 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+       background:#f5f6f8;color:#1b1d21;padding:20px;max-width:1080px;margin:auto}
+  h1{font-size:21px;margin:0 0 2px}
+  .sub{color:#6b7280;font-size:13px;margin:0 0 18px}
+  .card{background:#fff;border:1px solid #e3e6ea;border-radius:12px;padding:16px;margin-bottom:14px}
+  .card h2{font-size:14px;margin:0 0 10px;display:flex;align-items:center;gap:6px}
+  .grid{display:flex;gap:14px;flex-wrap:wrap}
+  .col{flex:1;min-width:240px}
+  label{display:block;font-size:12px;color:#6b7280;margin:8px 0 3px}
+  input[type=text],input[type=password],textarea,select{width:100%;border:1px solid #d5d9de;
+    border-radius:8px;padding:8px 9px;font:inherit;background:inherit;color:inherit}
+  textarea{resize:vertical}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .row>div{flex:1;min-width:150px}
+  .drop{border:2px dashed #cbd0d6;border-radius:10px;height:210px;display:flex;align-items:center;
+    justify-content:center;flex-direction:column;gap:6px;cursor:pointer;color:#8a9099;overflow:hidden;margin-top:4px}
+  .drop:hover{border-color:#3b6cff;color:#3b6cff}
+  .drop img{max-height:100%;max-width:100%;object-fit:contain}
+  button{background:#2f6bff;color:#fff;border:0;border-radius:9px;padding:10px 20px;font-size:15px;cursor:pointer}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  button.ghost{background:#e9edf3;color:#333}
+  .status{font-size:13px;color:#6b7280;margin-top:10px;white-space:pre-wrap}
+  .err{color:#c0392b;margin-top:10px;white-space:pre-wrap;font-size:13px}
+  #out{margin-top:6px;text-align:center}
+  #out img{max-height:560px;max-width:100%;border-radius:12px;border:1px solid #e3e6ea}
+  details{font-size:12px;color:#6b7280;margin-top:6px}
+  code{background:#eef1f5;padding:1px 5px;border-radius:4px}
+  .warn{background:#fff8e6;border:1px solid #f0d99a;color:#7a5b12;border-radius:8px;padding:9px 11px;font-size:12px;margin-bottom:14px}
+</style>
+</head>
+<body>
+<h1>虚拟试穿 · AI 上身效果图</h1>
+<p class="sub">上传一张自己的正面照 + 一件衣服，生成合成图。纯前端，无后端、无数据库，配置只存在你本浏览器里。</p>
+
+<div class="warn">
+  这是<strong>浏览器直连中转站</strong>的静态版：照片与密钥不会经过任何本站服务器，但也意味着
+  ① 中转站必须允许浏览器跨域（CORS）；② 密钥只填在你自己的浏览器里，别把本页公开给他人共用。
+  若直连报 CORS 错误，请改用仓库里的 HF Space（Gradio 版）或本地 <code>tryon/start.bat</code>（Python 转发，无跨域问题）。
+</div>
+
+<div class="card">
+  <h2>① 中转站配置 <button class="ghost" id="save" style="padding:4px 10px;font-size:12px;margin-left:auto">保存到本浏览器</button></h2>
+  <div class="row">
+    <div><label>Base URL（一般带 /v1）</label><input type="text" id="base" placeholder="https://your-relay.example.com/v1"></div>
+    <div><label>API Key</label><input type="password" id="key" placeholder="sk-..."></div>
+  </div>
+  <div class="row">
+    <div><label>图像模型</label><input type="text" id="model" placeholder="gpt-image-1 / gemini-image / nano-banana ..."></div>
+    <div><label>接口形态</label>
+      <select id="mode">
+        <option value="chat">chat/completions（多模态图进图出）</option>
+        <option value="images">images/generations（image[] 参考图）</option>
+      </select>
+    </div>
+    <div><label>自定义路径（可选）</label><input type="text" id="endpoint" placeholder="留空用标准路径"></div>
+  </div>
+  <label>指令（可选，留空用内置中文默认）</label>
+  <textarea id="prompt" rows="2" placeholder="把第 2 张图片里的衣服穿到第 1 张的人身上，保持脸、发型、身材、姿势、背景不变……"></textarea>
+  <details><summary>内置默认指令</summary><div id="defprompt"></div></details>
+</div>
+
+<div class="card">
+  <h2>② 上传两张图</h2>
+  <div class="grid">
+    <div class="col"><label>本人照片（正面、光线均匀、背景干净）</label>
+      <div class="drop" id="dropP"><span>点击选择 / 拖入</span><input type="file" accept="image/*" hidden id="fileP"></div></div>
+    <div class="col"><label>衣服照片（平铺或挂拍单件）</label>
+      <div class="drop" id="dropG"><span>点击选择 / 拖入</span><input type="file" accept="image/*" hidden id="fileG"></div></div>
+  </div>
+  <div style="margin-top:14px">
+    <button id="go">生成上身效果图</button>
+    <button class="ghost" id="dl" style="display:none">下载图片</button>
+  </div>
+  <div class="status" id="status"></div>
+  <div class="err" id="err"></div>
+</div>
+
+<div class="card" id="outCard" style="display:none">
+  <h2>③ 生成结果</h2><div id="out"></div>
+</div>
+
+<script>
+const DEFAULT_PROMPT = '把第 2 张图片里的衣服，穿到第 1 张图片的人身上，生成一张自然的上身效果图。保持人物的脸、发型、身材、姿势和背景不变，只替换服装；衣服的版型、颜色、图案、logo 尽量忠实还原，光影和褶皱自然。只输出图片。';
+document.getElementById('defprompt').textContent = DEFAULT_PROMPT;
+
+// ---- 配置：只存 localStorage，绝不上传 ----
+const FIELDS = ['base','key','model','mode','endpoint','prompt'];
+function loadCfg(){
+  try{ const s = JSON.parse(localStorage.getItem('tryon_cfg')||'{}');
+    FIELDS.forEach(k=>{ if(s[k]!=null) document.getElementById(k).value = s[k]; });
+  }catch(e){}
+  if(!document.getElementById('mode').value) document.getElementById('mode').value='chat';
+}
+function saveCfg(){
+  const s={}; FIELDS.forEach(k=> s[k]=document.getElementById(k).value.trim());
+  localStorage.setItem('tryon_cfg', JSON.stringify(s));
+  const el=document.getElementById('status'); el.textContent='配置已保存到本浏览器（不会上传）。';
+}
+function cfg(){
+  const g=id=>document.getElementById(id).value.trim();
+  return { base:g('base').replace(/\/+$/,''), key:g('key'), model:g('model'),
+           mode:g('mode')||'chat', endpoint:g('endpoint'), prompt:g('prompt')||DEFAULT_PROMPT };
+}
+loadCfg();
+document.getElementById('save').onclick=saveCfg;
+
+// ---- 图片输入 ----
+let P=null,G=null,LAST=null;
+function strip(u){ return u.includes(',') ? u.split(',').slice(1).join(',') : u; }
+function bind(drop,file,set){
+  const d=document.getElementById(drop), f=document.getElementById(file);
+  const read=(file)=>{ if(!file) return; const r=new FileReader();
+    r.onload=()=>{ set(r.result); d.innerHTML=''; const img=document.createElement('img'); img.src=r.result; d.appendChild(img); };
+    r.readAsDataURL(file); };
+  f.onchange=()=>read(f.files[0]);
+  d.onclick=()=>f.click();
+  d.ondragover=e=>{e.preventDefault();};
+  d.ondrop=e=>{e.preventDefault();read(e.dataTransfer.files[0]);};
+}
+bind('dropP','fileP',v=>P=v); bind('dropG','fileG',v=>G=v);
+
+// ---- 递归找图片（对应后端 _extract_image_bytes）----
+const DATA_URI_RE = /data:image\/[a-zA-Z0-9.+-]+;base64,([A-Za-z0-9+/=\s]+)/i;
+const URL_IMG_RE  = /https?:\/\/\S+\.(?:png|jpe?g|webp)(?:\?\S*)?/i;
+function walk(node, cb){
+  if(node && typeof node==='object'){
+    cb(node);
+    if(Array.isArray(node)) node.forEach(v=>walk(v,cb));
+    else Object.values(node).forEach(v=>walk(v,cb));
+  } else if(typeof node==='string'){ cb(node); }
+}
+function fromB64(s){
+  try{ const bin=atob(s.replace(/\s/g,'')); const arr=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); return arr; }catch(e){ return null; }
+}
+function extractImage(data){
+  // 1) 显式 base64 字段
+  let found=null;
+  walk(data, n=>{
+    if(found || typeof n!=='object' || n===null || Array.isArray(n)) return;
+    for(const k of ['b64_json','base64','image_base64']){
+      if(typeof n[k]==='string' && n[k].length>200){ const b=fromB64(n[k]); if(b){found={bytes:b,mime:'image/png'};return;} }
+    }
+    let v=n['data'] ?? n['inline_data'];
+    if(v && typeof v==='object') v = v.data || v.b64_json;
+    if(typeof v==='string' && v.length>200 && !v.startsWith('data:')){
+      const b=fromB64(v); if(b){ found={bytes:b,mime:n.mime_type||n.mimeType||'image/png'}; return; }
+    }
+    for(const k of ['url','image_url','b64']){
+      let u=n[k]; if(u && typeof u==='object') u=u.url;
+      if(typeof u==='string' && u.startsWith('data:image')){
+        const b=fromB64(u.split(',')[1]); if(b){ found={bytes:b,mime:'image/png'}; return; }
+      }
+    }
+  });
+  if(found) return found;
+  // 2) 文本/markdown 里的 data URI
+  walk(data, n=>{
+    if(found || typeof n!=='string') return;
+    const m=n.match(DATA_URI_RE);
+    if(m && m[1].length>200){ const b=fromB64(m[1]); if(b){ found={bytes:b,mime:'image/png'}; } }
+  });
+  if(found) return found;
+  // 3) 远程图片 URL（记下来让调用方 fetch）
+  let url=null;
+  walk(data, n=>{ if(!url && typeof n==='string'){ const m=n.match(URL_IMG_RE); if(m) url=m[0].replace(/[)>\"']+$/,''); } });
+  if(url) return {url};
+  return null;
+}
+
+function buildPayload(c, p, g){
+  const person='data:image/jpeg;base64,'+strip(p), garment='data:image/jpeg;base64,'+strip(g);
+  if(c.mode==='images') return { model:c.model, prompt:c.prompt, n:1, size:'1024x1536',
+    image:[person,garment], response_format:'b64_json' };
+  return { model:c.model, messages:[{role:'user',content:[
+    {type:'text',text:c.prompt},
+    {type:'image_url',image_url:{url:person}},
+    {type:'image_url',image_url:{url:garment}} ]}] };
+}
+function buildUrl(c){
+  if(c.endpoint) return c.endpoint.startsWith('http') ? c.endpoint : c.base+'/'+c.endpoint.replace(/^\/+/,'');
+  return c.base+'/'+(c.mode==='chat'?'chat/completions':'images/generations');
+}
+function toDataUrl(bytes,mime){
+  let bin=''; const chunk=0x8000;
+  for(let i=0;i<bytes.length;i+=chunk) bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+chunk));
+  return 'data:'+(mime||'image/png')+';base64,'+btoa(bin);
+}
+
+document.getElementById('go').onclick = async ()=>{
+  const err=document.getElementById('err'), st=document.getElementById('status'), btn=document.getElementById('go');
+  const c=cfg(); err.textContent='';
+  if(!c.base||!c.key||!c.model){ err.textContent='请先填写 Base URL / API Key / 图像模型。'; return; }
+  if(!P||!G){ err.textContent='请先上传两张图片。'; return; }
+  btn.disabled=true; st.textContent='生成中，约 10–60 秒…'; document.getElementById('outCard').style.display='none';
+  try{
+    const resp=await fetch(buildUrl(c),{ method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+c.key},
+      body:JSON.stringify(buildPayload(c,P,G)) });
+    const text=await resp.text();
+    if(!resp.ok) throw new Error('HTTP '+resp.status+'：'+text.slice(0,500));
+    let data; try{ data=JSON.parse(text); }catch(e){ throw new Error('中转站返回的不是 JSON：'+text.slice(0,300)); }
+    const img=extractImage(data);
+    if(!img) throw new Error('返回里没找到图片：'+JSON.stringify(data).slice(0,500));
+    let dataUrl;
+    if(img.url){
+      const r=await fetch(img.url); if(!r.ok) throw new Error('结果图下载失败 HTTP '+r.status);
+      const blob=await r.blob(); dataUrl=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=rej;fr.readAsDataURL(blob);});
+    } else dataUrl=toDataUrl(img.bytes,img.mime);
+    LAST=dataUrl;
+    const out=document.getElementById('out'); out.innerHTML='';
+    const im=document.createElement('img'); im.src=dataUrl; out.appendChild(im);
+    document.getElementById('outCard').style.display='block';
+    document.getElementById('dl').style.display='inline-block';
+    st.textContent='完成 · '+c.model+' · '+c.mode;
+  }catch(e){
+    let msg=String(e.message||e);
+    if(/Failed to fetch|NetworkError|TypeError/i.test(msg)) msg='无法连接中转站：多半是 CORS 被拦或地址不对。可改用 HF Space（Gradio）或本地 Python 工具。';
+    err.textContent=msg; st.textContent='';
+  }finally{ btn.disabled=false; }
+};
+document.getElementById('dl').onclick=()=>{ if(!LAST)return; const a=document.createElement('a');
+  a.href=LAST; a.download='tryon-'+Date.now()+'.png'; a.click(); };
+</script>
+</body>
+</html>

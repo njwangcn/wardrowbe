@@ -1,0 +1,117 @@
+# 轻量预览栈：只起 4 个容器，专门给 GitHub Codespaces / 免费 Docker 主机用。
+#
+#   docker compose -f docker-compose.preview.yml up -d --build
+#   打开 http://localhost:3000  （DEBUG=true，点 Login 直接免密进）
+#
+# 与生产/开发栈的区别（都是为了在免费 2 核 4GB 上跑得动、启动更快）：
+#   - 不启动 caddy / nginx / worker / image-worker —— 虚拟试穿是同步 API，不需要后台任务
+#   - 前端用 dev 镜像（npm run dev，免掉完整 Next.js 生产构建，冷启动快很多）
+#   - DEBUG=true → 免密登录，无需配 OIDC / SECRET_KEY
+#   - TRYON_* 全部从 .env 或环境变量注入；密钥绝不写进本文件（已 gitignore .env）
+#
+# 在 Codespaces 里 NEXTAUTH_URL 会被自动设成转发域名（见 .devcontainer/devcontainer.json）。
+
+x-backend-env: &backend-env
+  DEBUG: "true"
+  PUID: ${PUID:-1000}
+  PGID: ${PGID:-1000}
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-wardrobe}:${POSTGRES_PASSWORD:-wardrobe}@postgres:5432/${POSTGRES_DB:-wardrobe}
+  REDIS_URL: redis://redis:6379/0
+  SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+  STORAGE_PATH: /data/wardrobe
+  APP_URL: ${APP_URL:-http://localhost:3000}
+  LOG_LEVEL: INFO
+  # 预览时默认关掉内部打标/推荐 AI（不配 Ollama 也能干净启动）；
+  # 想试自动打标就把 AI_INTERNAL_ENABLED=true 并填好 AI_* 即可。
+  AI_INTERNAL_ENABLED: ${AI_INTERNAL_ENABLED:-false}
+  AI_BASE_URL: ${AI_BASE_URL:-}
+  AI_API_KEY: ${AI_API_KEY:-}
+  AI_VISION_MODEL: ${AI_VISION_MODEL:-gpt-4o}
+  AI_TEXT_MODEL: ${AI_TEXT_MODEL:-gpt-4o}
+  # ---- 虚拟试穿（走中转站图像模型）----
+  TRYON_ENABLED: ${TRYON_ENABLED:-false}
+  TRYON_BASE_URL: ${TRYON_BASE_URL:-}
+  TRYON_API_KEY: ${TRYON_API_KEY:-}
+  TRYON_MODEL: ${TRYON_MODEL:-}
+  TRYON_MODE: ${TRYON_MODE:-chat}
+  TRYON_ENDPOINT: ${TRYON_ENDPOINT:-}
+  TRYON_TIMEOUT: ${TRYON_TIMEOUT:-180}
+  TRYON_PROMPT: ${TRYON_PROMPT:-}
+  TRYON_ALLOW_ENV_PROMPT: ${TRYON_ALLOW_ENV_PROMPT:-true}
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: wardrobe-preview-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wardrobe}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wardrobe}
+      POSTGRES_DB: ${POSTGRES_DB:-wardrobe}
+    volumes:
+      - preview_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wardrobe}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: wardrobe-preview-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: wardrobe-preview-backend
+    environment:
+      <<: *backend-env
+      CORS_ORIGINS: '["http://localhost:3000", "http://frontend:3000", "${APP_URL:-http://localhost:3000}"]'
+    volumes:
+      - preview_data:/data/wardrobe
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: wardrobe-preview-frontend
+    environment:
+      BACKEND_URL: http://backend:8000
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-me-in-production}
+      DEV_MODE: "true"
+      NODE_ENV: development
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ./frontend:/app
+      - preview_node_modules:/app/node_modules
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  preview_pg:
+  preview_data:
+  preview_node_modules:
