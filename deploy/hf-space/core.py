@@ -41,7 +41,9 @@ def build_tryon_prompt(n_person: int, body: dict | None = None, extra: str | Non
     identity = (
         "【身份一致性，最重要】生成的人必须是参考照里的同一个人："
         "严格保持其五官、脸型、眼睛、眉毛、鼻子、嘴型、肤色、发型、发色、年龄感与面部特征，"
-        "不要换脸、不要美化成另一个人、不要改变五官比例。"
+        "不要换脸、不要美化成另一个人、不要改变五官比例；"
+        "不要输出常见的通用模特脸/网红脸，不要磨皮、瘦脸、改发际线、改年龄。"
+        "宁可保留参考照里的瑕疵（痘痘、细纹、脸型不对称），也不要美化。"
         + ("多张参考照请互相印证，取一致的特征；" if n_person > 1 else "")
     )
     build = "严格保持参考照里的体型、身高比例、肩宽、四肢比例与姿态，只替换服装，身体轮廓不要变成另一个人。"
@@ -49,7 +51,18 @@ def build_tryon_prompt(n_person: int, body: dict | None = None, extra: str | Non
         "把最后一张图片里的衣服穿到这个人身上，忠实还原衣服的版型、颜色、图案、logo、材质与细节；"
         "结合其体型自然呈现合身程度、垂坠与褶皱，光影自然。只输出最终效果图。"
     )
-    parts = [layout, identity, build]
+    preamble = (
+        f"Reference images 1-{n_person} are photos of the SAME real person; "
+        f"image {n_person + 1} is the garment to try on. "
+        "CRITICAL: reproduce that exact person — same face shape, eyes, eyebrows, nose, mouth, "
+        "skin tone, hairstyle, hair colour and apparent age. Never swap in a generic or idealized "
+        "model face, never retouch, slim or age-change the face. "
+        "Keep the person's real body proportions from the reference photos and just replace the "
+        f"clothing with the garment from image {n_person + 1}, matching its cut, colour, pattern, "
+        "logo, fabric and details. Photorealistic, natural light, plain background. "
+        "Output only the final image."
+    )
+    parts = [preamble, layout, identity, build]
     if body:
         bits = []
         num = lambda k, unit: (f"{body[k]:g}{unit}" if isinstance(body.get(k), (int, float)) else None)

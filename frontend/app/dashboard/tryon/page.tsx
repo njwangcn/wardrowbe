@@ -307,7 +307,9 @@ export default function TryOnPage() {
             </span>
           </CardTitle>
           <CardDescription className="text-xs">
-            建议：正面 + 侧面 + 半身，光线均匀、背景干净、脸清晰。多角度能明显提升人脸与身材的一致性。
+            第 1 张（主图）请用<strong>清晰正脸半身照</strong>，再加侧面/全身各 1 张最好。光线均匀、别用滤镜、别遮挡面部。
+            <br />
+            想更像本人：把不同角度、不同表情的照片都放上，模型会交叉比对，越清楚越像。
           </CardDescription>
         </CardHeader>
         <CardContent>
