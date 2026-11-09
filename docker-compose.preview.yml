@@ -69,7 +69,7 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.preview
     container_name: wardrobe-preview-backend
     environment:
       <<: *backend-env

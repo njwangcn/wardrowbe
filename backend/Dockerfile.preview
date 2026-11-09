@@ -1,0 +1,30 @@
+# 轻量预览镜像：只装核心依赖，跳过 requirements-extras.txt 里的 rembg
+# （约 500MB 模型权重 + numba JIT 编译）。rembg 在代码里是惰性导入，
+# 预览栈不启动 image-worker，因此不会用到它。用于 GitHub Codespaces /
+# 免费 2 核环境，构建时间和内存占用都显著下降。
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    libpq-dev \
+    curl \
+    gosu \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+RUN mkdir -p /data/wardrobe /data/uploads && chown -R appuser:appuser /data
+
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+ENTRYPOINT ["/docker-entrypoint.sh"]
+
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
