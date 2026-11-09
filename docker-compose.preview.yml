@@ -101,7 +101,9 @@ services:
     container_name: wardrobe-preview-frontend
     environment:
       BACKEND_URL: http://backend:8000
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      # 留空：NextAuth 按请求 Host 自动推断，github.dev / 隧道 / 自定义域名都能登录。
+      # 写死某个域名会导致从其它入口打开时登录后被拽回那个域名。
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-me-in-production}
       DEV_MODE: "true"
       NODE_ENV: development

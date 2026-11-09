@@ -20,7 +20,11 @@ APP_URL_VAL="${APP_URL:-}"
 if [ -n "${CODESPACE_NAME:-}" ] && [ -n "${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-}" ]; then
   APP_URL_VAL="https://${CODESPACE_NAME}-3000.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}"
 fi
-[ -n "$APP_URL_VAL" ] && { apply APP_URL "$APP_URL_VAL"; apply NEXTAUTH_URL "$APP_URL_VAL"; }
+# 注意：不写 NEXTAUTH_URL。写死成 github.dev 域名后，一旦改用别的入口（比如
+# Cloudflare 隧道、自定义域名）登录回调会被拽回 github.dev 而登不上。
+# 留空时 NextAuth 会按请求的 Host 自动推断，多个入口都能用。
+[ -n "$APP_URL_VAL" ] && apply APP_URL "$APP_URL_VAL"
+sed -i "/^NEXTAUTH_URL=/d" .env
 
 apply DEBUG true
 apply AI_INTERNAL_ENABLED false
