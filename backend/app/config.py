@@ -130,6 +130,12 @@ class Settings(BaseSettings):
     # Weather
     openmeteo_url: str = Field(default="https://api.open-meteo.com/v1")
     geocoding_user_agent: str | None = Field(default=None)
+    # Optional server-side default coordinates. When a user has no location set,
+    # weather endpoints fall back to these instead of returning 400. Left unset
+    # by default so upstream behavior is unchanged; handy for preview/demo
+    # deployments where requiring every user to configure a location is noisy.
+    default_weather_lat: float | None = Field(default=None, ge=-90, le=90)
+    default_weather_lon: float | None = Field(default=None, ge=-180, le=180)
 
     # Notifications - default ntfy channel (used when user has none configured)
     ntfy_server: str | None = None

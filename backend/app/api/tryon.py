@@ -1,6 +1,6 @@
 """Virtual try-on endpoints.
 
-POST /tryon/generate  — person photo + garment photo -> rendered "me wearing it" image
+POST /tryon/generate  — 1..6 person photos + garment photo -> rendered image
 GET  /tryon/status    — whether the feature is enabled/configured (never exposes the key)
 
 The generated image is returned as base64 in the JSON body (no new DB tables,
@@ -27,6 +27,7 @@ from app.utils.auth import get_current_user
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tryon", tags=["Try-On"])
+MAX_PHOTOS = 6
 
 
 def _clean_b64(value: str) -> str:
@@ -47,6 +48,7 @@ async def tryon_status() -> TryOnStatus:
         model=s.tryon_model if service.is_configured() else "",
         mode=s.tryon_mode,
         base_url_host=service.status_host(),
+        max_person_photos=MAX_PHOTOS,
     )
 
 
@@ -62,14 +64,23 @@ async def generate_tryon(
             detail="虚拟试穿未配置，请在 .env 中设置 TRYON_* 后重启后端。",
         )
 
-    person = _clean_b64(request.person_image)
+    persons = [_clean_b64(b) for b in request.person_images[:MAX_PHOTOS] if b and len(b) >= 100]
     garment = _clean_b64(request.garment_image)
+    if not persons:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="至少需要一张本人照片")
 
     # Allow callers to override the prompt only when explicitly permitted.
     prompt = request.prompt if get_settings().tryon_allow_env_prompt else None
 
     try:
-        image_bytes, mime = await service.generate(person, garment, prompt, request.size)
+        image_bytes, mime = await service.generate(
+            persons,
+            garment,
+            prompt=prompt,
+            size=request.size,
+            body=request.body,
+            preserve_face=request.preserve_face,
+        )
     except TryOnNotConfiguredError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from None
     except TryOnError as exc:
@@ -81,4 +92,5 @@ async def generate_tryon(
         mime_type=mime,
         model=get_settings().tryon_model,
         mode=get_settings().tryon_mode,
+        person_photo_count=len(persons),
     )

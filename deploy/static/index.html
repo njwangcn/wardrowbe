@@ -16,18 +16,28 @@
   .grid{display:flex;gap:14px;flex-wrap:wrap}
   .col{flex:1;min-width:240px}
   label{display:block;font-size:12px;color:#6b7280;margin:8px 0 3px}
-  input[type=text],input[type=password],textarea,select{width:100%;border:1px solid #d5d9de;
+  input[type=text],input[type=password],input[type=number],textarea,select{width:100%;border:1px solid #d5d9de;
     border-radius:8px;padding:8px 9px;font:inherit;background:inherit;color:inherit}
   textarea{resize:vertical}
   .row{display:flex;gap:10px;flex-wrap:wrap}
-  .row>div{flex:1;min-width:150px}
-  .drop{border:2px dashed #cbd0d6;border-radius:10px;height:210px;display:flex;align-items:center;
+  .row>div{flex:1;min-width:130px}
+  .thumbs{display:flex;gap:10px;flex-wrap:wrap}
+  .thumb{position:relative;width:96px;height:128px;border-radius:8px;overflow:hidden;border:1px solid #e3e6ea}
+  .thumb img{width:100%;height:100%;object-fit:cover}
+  .thumb .x{position:absolute;right:2px;top:2px;background:#0009;color:#fff;border:0;border-radius:50%;
+    width:20px;height:20px;cursor:pointer;line-height:18px;text-align:center;font-size:13px}
+  .thumb .tag{position:absolute;left:0;bottom:0;background:#0009;color:#fff;font-size:10px;padding:1px 5px}
+  .add{width:96px;height:128px;border:2px dashed #cbd0d6;border-radius:8px;display:flex;align-items:center;
+    justify-content:center;flex-direction:column;cursor:pointer;color:#8a9099;gap:4px;font-size:12px}
+  .add:hover{border-color:#3b6cff;color:#3b6cff}
+  .drop{border:2px dashed #cbd0d6;border-radius:10px;height:200px;display:flex;align-items:center;
     justify-content:center;flex-direction:column;gap:6px;cursor:pointer;color:#8a9099;overflow:hidden;margin-top:4px}
   .drop:hover{border-color:#3b6cff;color:#3b6cff}
   .drop img{max-height:100%;max-width:100%;object-fit:contain}
   button{background:#2f6bff;color:#fff;border:0;border-radius:9px;padding:10px 20px;font-size:15px;cursor:pointer}
   button:disabled{opacity:.5;cursor:not-allowed}
   button.ghost{background:#e9edf3;color:#333}
+  .opt{display:flex;align-items:center;gap:8px;font-size:13px;margin-top:10px}
   .status{font-size:13px;color:#6b7280;margin-top:10px;white-space:pre-wrap}
   .err{color:#c0392b;margin-top:10px;white-space:pre-wrap;font-size:13px}
   #out{margin-top:6px;text-align:center}
@@ -35,11 +45,12 @@
   details{font-size:12px;color:#6b7280;margin-top:6px}
   code{background:#eef1f5;padding:1px 5px;border-radius:4px}
   .warn{background:#fff8e6;border:1px solid #f0d99a;color:#7a5b12;border-radius:8px;padding:9px 11px;font-size:12px;margin-bottom:14px}
+  .muted{font-size:12px;color:#6b7280}
 </style>
 </head>
 <body>
 <h1>虚拟试穿 · AI 上身效果图</h1>
-<p class="sub">上传一张自己的正面照 + 一件衣服，生成合成图。纯前端，无后端、无数据库，配置只存在你本浏览器里。</p>
+<p class="sub">上传 1–6 张自己的照片（正面/侧面等多角度，人脸更一致）+ 一件衣服，生成合成图。纯前端，配置只存在你本浏览器里。</p>
 
 <div class="warn">
   这是<strong>浏览器直连中转站</strong>的静态版：照片与密钥不会经过任何本站服务器，但也意味着
@@ -54,30 +65,54 @@
     <div><label>API Key</label><input type="password" id="key" placeholder="sk-..."></div>
   </div>
   <div class="row">
-    <div><label>图像模型</label><input type="text" id="model" placeholder="gpt-image-1 / gemini-image / nano-banana ..."></div>
+    <div><label>图像模型</label><input type="text" id="model" placeholder="gpt-image-2.6-sunburst / gemini-image ..."></div>
     <div><label>接口形态</label>
       <select id="mode">
-        <option value="edits">images/edits（multipart 两图，gpt-image 推荐）</option>
+        <option value="edits">images/edits（multipart 多图，gpt-image 推荐）</option>
         <option value="chat">chat/completions（多模态图进图出）</option>
         <option value="images">images/generations（JSON image[]）</option>
       </select>
     </div>
     <div><label>自定义路径（可选）</label><input type="text" id="endpoint" placeholder="留空用标准路径"></div>
   </div>
-  <label>指令（可选，留空用内置中文默认）</label>
-  <textarea id="prompt" rows="2" placeholder="把第 2 张图片里的衣服穿到第 1 张的人身上，保持脸、发型、身材、姿势、背景不变……"></textarea>
-  <details><summary>内置默认指令</summary><div id="defprompt"></div></details>
 </div>
 
 <div class="card">
-  <h2>② 上传两张图</h2>
-  <div class="grid">
-    <div class="col"><label>本人照片（正面、光线均匀、背景干净）</label>
-      <div class="drop" id="dropP"><span>点击选择 / 拖入</span><input type="file" accept="image/*" hidden id="fileP"></div></div>
-    <div class="col"><label>衣服照片（平铺或挂拍单件）</label>
-      <div class="drop" id="dropG"><span>点击选择 / 拖入</span><input type="file" accept="image/*" hidden id="fileG"></div></div>
+  <h2>② 本人照片 <span class="muted" id="cnt" style="margin-left:auto;font-weight:normal"></span></h2>
+  <p class="muted">多角度、光线均匀、脸清晰，能明显提升人脸一致性。至少 1 张。</p>
+  <div class="thumbs" id="thumbs"></div>
+  <input type="file" accept="image/*" multiple hidden id="fileP">
+</div>
+
+<div class="card">
+  <h2>③ 衣服照片</h2>
+  <div class="drop" id="dropG"><span>点击选择 / 拖入（平铺或挂拍单件，图案完整）</span>
+    <input type="file" accept="image/*" hidden id="fileG"></div>
+</div>
+
+<div class="card">
+  <h2>④ 身材信息（可选，帮助还原体型与合身度）</h2>
+  <div class="row">
+    <div><label>身高 cm</label><input type="number" id="height_cm"></div>
+    <div><label>体重 kg</label><input type="number" id="weight_kg"></div>
+    <div><label>胸围 cm</label><input type="number" id="bust_cm"></div>
+    <div><label>腰围 cm</label><input type="number" id="waist_cm"></div>
+    <div><label>臀围 cm</label><input type="number" id="hip_cm"></div>
   </div>
-  <div style="margin-top:14px">
+  <div class="row">
+    <div><label>体型（偏瘦/匀称/健壮…）</label><input type="text" id="build"></div>
+    <div><label>其他特征（肩宽/发型/肤色…）</label><input type="text" id="notes"></div>
+  </div>
+  <p class="muted">这些数值作为文字提示帮助模型把握体型与衣服松紧，<strong>以照片为准</strong>。</p>
+</div>
+
+<div class="card">
+  <h2>⑤ 生成</h2>
+  <label>附加要求（可选）</label>
+  <textarea id="prompt" rows="2" placeholder="留空用内置身份锁定指令。例如：外套拉链拉上、换成街拍背景"></textarea>
+  <label class="opt"><input type="checkbox" id="face" checked> 锁定人脸（input_fidelity=high，更不容易换脸）</label>
+  <details><summary>查看内置身份锁定指令</summary><div id="defprompt" style="white-space:pre-wrap"></div></details>
+  <div style="margin-top:12px">
     <button id="go">生成上身效果图</button>
     <button class="ghost" id="dl" style="display:none">下载图片</button>
   </div>
@@ -86,170 +121,153 @@
 </div>
 
 <div class="card" id="outCard" style="display:none">
-  <h2>③ 生成结果</h2><div id="out"></div>
+  <h2>生成结果</h2><div id="out"></div>
 </div>
 
 <script>
-const DEFAULT_PROMPT = '把第 2 张图片里的衣服，穿到第 1 张图片的人身上，生成一张自然的上身效果图。保持人物的脸、发型、身材、姿势和背景不变，只替换服装；衣服的版型、颜色、图案、logo 尽量忠实还原，光影和褶皱自然。只输出图片。';
-document.getElementById('defprompt').textContent = DEFAULT_PROMPT;
+const MAX_PHOTOS=6;
+function buildPrompt(nPerson, body, extra){
+  const layout = nPerson===1 ? '第 1 张图片是本人参考照，第 2 张图片是要试穿的衣服。'
+    : '第 1~'+nPerson+' 张图片是【同一个人】的不同角度参考照（正面、侧面、半身等），第 '+(nPerson+1)+' 张图片是要试穿的衣服。';
+  const identity = '【身份一致性，最重要】生成的人必须是参考照里的同一个人：严格保持其五官、脸型、眼睛、眉毛、鼻子、嘴型、肤色、发型、发色、年龄感与面部特征，不要换脸、不要美化成另一个人、不要改变五官比例。'
+    + (nPerson>1 ? '多张参考照请互相印证，取一致的特征；' : '');
+  const shape = '严格保持参考照里的体型、身高比例、肩宽、四肢比例与姿态，只替换服装，身体轮廓不要变成另一个人。';
+  const garment = '把最后一张图片里的衣服穿到这个人身上，忠实还原衣服的版型、颜色、图案、logo、材质与细节；结合其体型自然呈现合身程度、垂坠与褶皱，光影自然。只输出最终效果图。';
+  const parts=[layout,identity,shape];
+  if(body){
+    const bits=[];
+    if(body.height_cm)bits.push('身高约 '+body.height_cm+' cm');
+    if(body.weight_kg)bits.push('体重约 '+body.weight_kg+' kg');
+    if(body.bust_cm&&body.waist_cm&&body.hip_cm)bits.push('三围约 '+body.bust_cm+'/'+body.waist_cm+'/'+body.hip_cm+' cm');
+    else {const t=[];if(body.bust_cm)t.push('胸围 '+body.bust_cm);if(body.waist_cm)t.push('腰围 '+body.waist_cm);if(body.hip_cm)t.push('臀围 '+body.hip_cm);if(t.length)bits.push(t.join('、')+' cm');}
+    if(body.build)bits.push('体型'+body.build);
+    if(bits.length)parts.push('【体型参考】此人是：'+bits.join('，')+'。据此还原身材与穿衣合身度，但以照片为准。');
+    if(body.notes)parts.push('【其他特征】'+body.notes);
+  }
+  parts.push(garment);
+  if(extra&&extra.trim())parts.push('【附加要求】'+extra.trim());
+  return parts.join('\n');
+}
+document.getElementById('defprompt').textContent = buildPrompt(1,null,null);
 
-// ---- 配置：只存 localStorage，绝不上传 ----
-const FIELDS = ['base','key','model','mode','endpoint','prompt'];
+// ---- 配置：只存 localStorage ----
+const FIELDS = ['base','key','model','mode','endpoint'];
 function loadCfg(){
-  try{ const s = JSON.parse(localStorage.getItem('tryon_cfg')||'{}');
-    FIELDS.forEach(k=>{ if(s[k]!=null) document.getElementById(k).value = s[k]; });
+  try{ const s=JSON.parse(localStorage.getItem('tryon_cfg')||'{}');
+    FIELDS.forEach(k=>{ if(s[k]!=null) document.getElementById(k).value=s[k]; });
   }catch(e){}
-  if(!document.getElementById('mode').value) document.getElementById('mode').value='chat';
+  if(!document.getElementById('mode').value) document.getElementById('mode').value='edits';
 }
-function saveCfg(){
-  const s={}; FIELDS.forEach(k=> s[k]=document.getElementById(k).value.trim());
-  localStorage.setItem('tryon_cfg', JSON.stringify(s));
-  const el=document.getElementById('status'); el.textContent='配置已保存到本浏览器（不会上传）。';
-}
-function cfg(){
-  const g=id=>document.getElementById(id).value.trim();
-  return { base:g('base').replace(/\/+$/,''), key:g('key'), model:g('model'),
-           mode:g('mode')||'chat', endpoint:g('endpoint'), prompt:g('prompt')||DEFAULT_PROMPT };
-}
-loadCfg();
-document.getElementById('save').onclick=saveCfg;
+function saveCfg(){ const s={}; FIELDS.forEach(k=>s[k]=document.getElementById(k).value.trim());
+  localStorage.setItem('tryon_cfg',JSON.stringify(s));
+  document.getElementById('status').textContent='配置已保存到本浏览器（不会上传）。'; }
+function cfg(){ const g=id=>document.getElementById(id).value.trim();
+  return {base:g('base').replace(/\/+$/,''),key:g('key'),model:g('model'),mode:g('mode')||'edits',endpoint:g('endpoint')}; }
+loadCfg(); document.getElementById('save').onclick=saveCfg;
 
-// ---- 图片输入 ----
-let P=null,G=null,LAST=null;
+// ---- 多张本人照片 ----
+let P=[],G=null,LAST=null;
 function strip(u){ return u.includes(',') ? u.split(',').slice(1).join(',') : u; }
-function bind(drop,file,set){
-  const d=document.getElementById(drop), f=document.getElementById(file);
-  const read=(file)=>{ if(!file) return; const r=new FileReader();
-    r.onload=()=>{ set(r.result); d.innerHTML=''; const img=document.createElement('img'); img.src=r.result; d.appendChild(img); };
-    r.readAsDataURL(file); };
-  f.onchange=()=>read(f.files[0]);
-  d.onclick=()=>f.click();
-  d.ondragover=e=>{e.preventDefault();};
-  d.ondrop=e=>{e.preventDefault();read(e.dataTransfer.files[0]);};
+function renderP(){
+  const box=document.getElementById('thumbs'); box.innerHTML='';
+  P.forEach((v,i)=>{const d=document.createElement('div');d.className='thumb';
+    d.innerHTML='<img src="'+v+'"><span class="tag">'+(i===0?'主图':'#'+(i+1))+'</span><button class="x">×</button>';
+    d.querySelector('.x').onclick=()=>{P.splice(i,1);renderP();};box.appendChild(d);});
+  if(P.length<MAX_PHOTOS){const a=document.createElement('div');a.className='add';
+    a.innerHTML='＋<span>添加照片</span>';a.onclick=()=>document.getElementById('fileP').click();box.appendChild(a);}
+  document.getElementById('cnt').textContent='（'+P.length+'/'+MAX_PHOTOS+' 张）';
 }
-bind('dropP','fileP',v=>P=v); bind('dropG','fileG',v=>G=v);
+function readP(files){ const room=MAX_PHOTOS-P.length;
+  Array.from(files).slice(0,room).forEach(f=>{const r=new FileReader();
+    r.onload=()=>{P.push(r.result);renderP();};r.readAsDataURL(f);}); }
+document.getElementById('fileP').onchange=e=>{readP(e.target.files);e.target.value='';};
+function readG(file){const r=new FileReader();r.onload=()=>{G=r.result;const d=document.getElementById('dropG');
+  d.innerHTML='';const img=document.createElement('img');img.src=G;d.appendChild(img);};r.readAsDataURL(file);}
+document.getElementById('fileG').onchange=e=>{if(e.target.files[0])readG(e.target.files[0]);e.target.value='';};
+const dg=document.getElementById('dropG');dg.onclick=()=>document.getElementById('fileG').click();
+dg.ondragover=e=>e.preventDefault();dg.ondrop=e=>{e.preventDefault();if(e.dataTransfer.files[0])readG(e.dataTransfer.files[0]);};
 
-// ---- 递归找图片（对应后端 _extract_image_bytes）----
-const DATA_URI_RE = /data:image\/[a-zA-Z0-9.+-]+;base64,([A-Za-z0-9+/=\s]+)/i;
-const URL_IMG_RE  = /https?:\/\/\S+\.(?:png|jpe?g|webp)(?:\?\S*)?/i;
-function walk(node, cb){
-  if(node && typeof node==='object'){
-    cb(node);
-    if(Array.isArray(node)) node.forEach(v=>walk(v,cb));
-    else Object.values(node).forEach(v=>walk(v,cb));
-  } else if(typeof node==='string'){ cb(node); }
-}
-function fromB64(s){
-  try{ const bin=atob(s.replace(/\s/g,'')); const arr=new Uint8Array(bin.length);
-    for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); return arr; }catch(e){ return null; }
-}
-function extractImage(data){
-  // 1) 显式 base64 字段
-  let found=null;
-  walk(data, n=>{
-    if(found || typeof n!=='object' || n===null || Array.isArray(n)) return;
-    for(const k of ['b64_json','base64','image_base64']){
-      if(typeof n[k]==='string' && n[k].length>200){ const b=fromB64(n[k]); if(b){found={bytes:b,mime:'image/png'};return;} }
-    }
-    let v=n['data'] ?? n['inline_data'];
-    if(v && typeof v==='object') v = v.data || v.b64_json;
-    if(typeof v==='string' && v.length>200 && !v.startsWith('data:')){
-      const b=fromB64(v); if(b){ found={bytes:b,mime:n.mime_type||n.mimeType||'image/png'}; return; }
-    }
-    for(const k of ['url','image_url','b64']){
-      let u=n[k]; if(u && typeof u==='object') u=u.url;
-      if(typeof u==='string' && u.startsWith('data:image')){
-        const b=fromB64(u.split(',')[1]); if(b){ found={bytes:b,mime:'image/png'}; return; }
-      }
-    }
-  });
-  if(found) return found;
-  // 2) 文本/markdown 里的 data URI
-  walk(data, n=>{
-    if(found || typeof n!=='string') return;
-    const m=n.match(DATA_URI_RE);
-    if(m && m[1].length>200){ const b=fromB64(m[1]); if(b){ found={bytes:b,mime:'image/png'}; } }
-  });
-  if(found) return found;
-  // 3) 远程图片 URL（记下来让调用方 fetch）
-  let url=null;
-  walk(data, n=>{ if(!url && typeof n==='string'){ const m=n.match(URL_IMG_RE); if(m) url=m[0].replace(/[)>\"']+$/,''); } });
-  if(url) return {url};
-  return null;
-}
+function bodyObj(){const b={},n=id=>{const v=document.getElementById(id).value;return v===''?undefined:Number(v);};
+  ['height_cm','weight_kg','bust_cm','waist_cm','hip_cm'].forEach(k=>{const v=n(k);if(v>0)b[k]=v;});
+  ['build','notes'].forEach(k=>{const v=document.getElementById(k).value.trim();if(v)b[k]=v;});
+  return Object.keys(b).length?b:null;}
 
-function buildPayload(c, p, g){
-  const person='data:image/jpeg;base64,'+strip(p), garment='data:image/jpeg;base64,'+strip(g);
-  if(c.mode==='images') return { model:c.model, prompt:c.prompt, n:1, size:'1024x1536',
-    image:[person,garment], response_format:'b64_json' };
-  return { model:c.model, messages:[{role:'user',content:[
-    {type:'text',text:c.prompt},
-    {type:'image_url',image_url:{url:person}},
-    {type:'image_url',image_url:{url:garment}} ]}] };
-}
-function buildUrl(c){
-  if(c.endpoint) return c.endpoint.startsWith('http') ? c.endpoint : c.base+'/'+c.endpoint.replace(/^\/+/,'');
+// ---- 递归找图片 ----
+const DATA_URI_RE=/data:image\/[a-zA-Z0-9.+-]+;base64,([A-Za-z0-9+/=\s]+)/i;
+const URL_IMG_RE=/https?:\/\/\S+\.(?:png|jpe?g|webp)(?:\?\S*)?/i;
+function walk(node,cb){if(node&&typeof node==='object'){cb(node);
+  if(Array.isArray(node))node.forEach(v=>walk(v,cb));else Object.values(node).forEach(v=>walk(v,cb));}
+  else if(typeof node==='string')cb(node);}
+function fromB64(s){try{const bin=atob(s.replace(/\s/g,''));const arr=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);return arr;}catch(e){return null;}}
+function extractImage(data){let found=null;
+  walk(data,n=>{if(found||typeof n!=='object'||n===null||Array.isArray(n))return;
+    for(const k of ['b64_json','base64','image_base64']){if(typeof n[k]==='string'&&n[k].length>200){const b=fromB64(n[k]);if(b){found={bytes:b,mime:'image/png'};return;}}}
+    let v=n['data']??n['inline_data'];if(v&&typeof v==='object')v=v.data||v.b64_json;
+    if(typeof v==='string'&&v.length>200&&!v.startsWith('data:')){const b=fromB64(v);if(b){found={bytes:b,mime:n.mime_type||n.mimeType||'image/png'};return;}}
+    for(const k of ['url','image_url','b64']){let u=n[k];if(u&&typeof u==='object')u=u.url;
+      if(typeof u==='string'&&u.startsWith('data:image')){const b=fromB64(u.split(',')[1]);if(b){found={bytes:b,mime:'image/png'};return;}}}});
+  if(found)return found;
+  walk(data,n=>{if(found||typeof n!=='string')return;const m=n.match(DATA_URI_RE);
+    if(m&&m[1].length>200){const b=fromB64(m[1]);if(b)found={bytes:b,mime:'image/png'};}});
+  if(found)return found;
+  let url=null;walk(data,n=>{if(!url&&typeof n==='string'){const m=n.match(URL_IMG_RE);if(m)url=m[0].replace(/[)>\"']+$/,'');}});
+  if(url)return {url};return null;}
+
+function buildUrl(c){if(c.endpoint)return c.endpoint.startsWith('http')?c.endpoint:c.base+'/'+c.endpoint.replace(/^\/+/,'');
   const p={chat:'chat/completions',images:'images/generations',edits:'images/edits'}[c.mode]||'chat/completions';
-  return c.base+'/'+p;
-}
-function b64ToBlob(b64, mime){
-  const bin=atob(b64), arr=new Uint8Array(bin.length);
-  for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
-  return new Blob([arr],{type:mime||'image/png'});
-}
-function buildEditsBody(c, p, g){
-  const fd=new FormData();
-  fd.append('model',c.model); fd.append('prompt',c.prompt);
-  fd.append('n','1'); fd.append('size','1024x1536');
-  fd.append('image[]', b64ToBlob(strip(p)), 'person.png');
-  fd.append('image[]', b64ToBlob(strip(g)), 'garment.png');
-  return fd;
-}
-function toDataUrl(bytes,mime){
-  let bin=''; const chunk=0x8000;
-  for(let i=0;i<bytes.length;i+=chunk) bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+chunk));
-  return 'data:'+(mime||'image/png')+';base64,'+btoa(bin);
-}
+  return c.base+'/'+p;}
+function b64ToBlob(b64,mime){const bin=atob(b64),arr=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);return new Blob([arr],{type:mime||'image/png'});}
+function toDataUrl(bytes,mime){let bin='';const chunk=0x8000;
+  for(let i=0;i<bytes.length;i+=chunk)bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+chunk));
+  return 'data:'+(mime||'image/png')+';base64,'+btoa(bin);}
 
-document.getElementById('go').onclick = async ()=>{
-  const err=document.getElementById('err'), st=document.getElementById('status'), btn=document.getElementById('go');
-  const c=cfg(); err.textContent='';
-  if(!c.base||!c.key||!c.model){ err.textContent='请先填写 Base URL / API Key / 图像模型。'; return; }
-  if(!P||!G){ err.textContent='请先上传两张图片。'; return; }
-  btn.disabled=true; st.textContent='生成中，约 10–60 秒…'; document.getElementById('outCard').style.display='none';
+function buildJsonPayload(c,persons,garment,prompt,face){
+  const allUri=persons.map(p=>'data:image/jpeg;base64,'+strip(p)).concat(['data:image/jpeg;base64,'+strip(garment)]);
+  if(c.mode==='images'){const o={model:c.model,prompt,n:1,size:'1024x1536',image:allUri,response_format:'b64_json'};
+    if(face)o.input_fidelity='high';return o;}
+  return {model:c.model,messages:[{role:'user',content:[{type:'text',text:prompt}].concat(
+    allUri.map(u=>({type:'image_url',image_url:{url:u}})))}]};}
+function buildEditsBody(c,persons,garment,prompt,face){
+  const fd=new FormData();fd.append('model',c.model);fd.append('prompt',prompt);
+  fd.append('n','1');fd.append('size','1024x1536');if(face)fd.append('input_fidelity','high');
+  persons.forEach((p,i)=>fd.append('image[]',b64ToBlob(strip(p)),'person'+(i+1)+'.png'));
+  fd.append('image[]',b64ToBlob(strip(garment)),'garment.png');return fd;}
+
+document.getElementById('go').onclick=async()=>{
+  const err=document.getElementById('err'),st=document.getElementById('status'),btn=document.getElementById('go');
+  const c=cfg();err.textContent='';
+  if(!c.base||!c.key||!c.model){err.textContent='请先填写 Base URL / API Key / 图像模型。';return;}
+  if(!P.length||!G){err.textContent='请至少上传一张本人照片和一件衣服。';return;}
+  const body=bodyObj(),face=document.getElementById('face').checked;
+  const prompt=buildPrompt(P.length,body,document.getElementById('prompt').value);
+  btn.disabled=true;st.textContent='生成中，约 10–60 秒…';document.getElementById('outCard').style.display='none';
   try{
-    let body, headers={'Authorization':'Bearer '+c.key};
-    if(c.mode==='edits'){
-      body=buildEditsBody(c,P,G);           // FormData，浏览器自己加 multipart boundary
-    } else {
-      headers['Content-Type']='application/json';
-      body=JSON.stringify(buildPayload(c,P,G));
-    }
-    const resp=await fetch(buildUrl(c),{ method:'POST', headers, body });
+    let reqBody,headers={'Authorization':'Bearer '+c.key};
+    if(c.mode==='edits')reqBody=buildEditsBody(c,P,G,prompt,face);
+    else {headers['Content-Type']='application/json';reqBody=JSON.stringify(buildJsonPayload(c,P,G,prompt,face));}
+    const resp=await fetch(buildUrl(c),{method:'POST',headers,body:reqBody});
     const text=await resp.text();
-    if(!resp.ok) throw new Error('HTTP '+resp.status+'：'+text.slice(0,500));
-    let data; try{ data=JSON.parse(text); }catch(e){ throw new Error('中转站返回的不是 JSON：'+text.slice(0,300)); }
-    const img=extractImage(data);
-    if(!img) throw new Error('返回里没找到图片：'+JSON.stringify(data).slice(0,500));
+    if(!resp.ok)throw new Error('HTTP '+resp.status+'：'+text.slice(0,500));
+    let data;try{data=JSON.parse(text);}catch(e){throw new Error('中转站返回的不是 JSON：'+text.slice(0,300));}
+    const img=extractImage(data);if(!img)throw new Error('返回里没找到图片：'+JSON.stringify(data).slice(0,500));
     let dataUrl;
-    if(img.url){
-      const r=await fetch(img.url); if(!r.ok) throw new Error('结果图下载失败 HTTP '+r.status);
-      const blob=await r.blob(); dataUrl=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=rej;fr.readAsDataURL(blob);});
-    } else dataUrl=toDataUrl(img.bytes,img.mime);
-    LAST=dataUrl;
-    const out=document.getElementById('out'); out.innerHTML='';
-    const im=document.createElement('img'); im.src=dataUrl; out.appendChild(im);
-    document.getElementById('outCard').style.display='block';
-    document.getElementById('dl').style.display='inline-block';
-    st.textContent='完成 · '+c.model+' · '+c.mode;
-  }catch(e){
-    let msg=String(e.message||e);
-    if(/Failed to fetch|NetworkError|TypeError/i.test(msg)) msg='无法连接中转站：多半是 CORS 被拦或地址不对。可改用 HF Space（Gradio）或本地 Python 工具。';
-    err.textContent=msg; st.textContent='';
-  }finally{ btn.disabled=false; }
+    if(img.url){const r=await fetch(img.url);if(!r.ok)throw new Error('结果图下载失败 HTTP '+r.status);
+      const blob=await r.blob();dataUrl=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=rej;fr.readAsDataURL(blob);});}
+    else dataUrl=toDataUrl(img.bytes,img.mime);
+    LAST=dataUrl;const out=document.getElementById('out');out.innerHTML='';
+    const im=document.createElement('img');im.src=dataUrl;out.appendChild(im);
+    document.getElementById('outCard').style.display='block';document.getElementById('dl').style.display='inline-block';
+    st.textContent='完成 · '+c.model+' · '+c.mode+' · 用了 '+P.length+' 张人像';
+  }catch(e){let msg=String(e.message||e);
+    if(/Failed to fetch|NetworkError|TypeError/i.test(msg))msg='无法连接中转站：多半是 CORS 被拦或地址不对。可改用 HF Space（Gradio）或本地 Python 工具。';
+    err.textContent=msg;st.textContent='';
+  }finally{btn.disabled=false;}
 };
-document.getElementById('dl').onclick=()=>{ if(!LAST)return; const a=document.createElement('a');
-  a.href=LAST; a.download='tryon-'+Date.now()+'.png'; a.click(); };
+document.getElementById('dl').onclick=()=>{if(!LAST)return;const a=document.createElement('a');
+  a.href=LAST;a.download='tryon-'+Date.now()+'.png';a.click();};
+renderP();
 </script>
 </body>
 </html>

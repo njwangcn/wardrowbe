@@ -26,11 +26,50 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 
-DEFAULT_PROMPT = (
-    "把第 2 张图片里的衣服，穿到第 1 张图片的人身上，生成一张自然的上身效果图。"
-    "保持人物的脸、发型、身材、姿势和背景不变，只替换服装；"
-    "衣服的版型、颜色、图案、logo 尽量忠实还原，光影和褶皱自然。只输出图片。"
-)
+DEFAULT_PROMPT = ""  # built dynamically by build_tryon_prompt (image order matters)
+
+
+def build_tryon_prompt(n_person: int, body: dict | None = None, extra: str | None = None) -> str:
+    """Identity-locking prompt. Images are sent as [person_1..N, garment], garment is LAST."""
+    if n_person == 1:
+        layout = "第 1 张图片是本人参考照，第 2 张图片是要试穿的衣服。"
+    else:
+        layout = (
+            f"第 1~{n_person} 张图片是【同一个人】的不同角度参考照（正面、侧面、半身等），"
+            f"第 {n_person + 1} 张图片是要试穿的衣服。"
+        )
+    identity = (
+        "【身份一致性，最重要】生成的人必须是参考照里的同一个人："
+        "严格保持其五官、脸型、眼睛、眉毛、鼻子、嘴型、肤色、发型、发色、年龄感与面部特征，"
+        "不要换脸、不要美化成另一个人、不要改变五官比例。"
+        + ("多张参考照请互相印证，取一致的特征；" if n_person > 1 else "")
+    )
+    build = "严格保持参考照里的体型、身高比例、肩宽、四肢比例与姿态，只替换服装，身体轮廓不要变成另一个人。"
+    garment = (
+        "把最后一张图片里的衣服穿到这个人身上，忠实还原衣服的版型、颜色、图案、logo、材质与细节；"
+        "结合其体型自然呈现合身程度、垂坠与褶皱，光影自然。只输出最终效果图。"
+    )
+    parts = [layout, identity, build]
+    if body:
+        bits = []
+        num = lambda k, unit: (f"{body[k]:g}{unit}" if isinstance(body.get(k), (int, float)) else None)
+        for k, label, unit in [("height_cm", "身高约", " cm"), ("weight_kg", "体重约", " kg")]:
+            v = num(k, unit)
+            if v:
+                bits.append(label + " " + v)
+        trio = [body.get(k) for k in ("bust_cm", "waist_cm", "hip_cm")]
+        if all(isinstance(x, (int, float)) for x in trio):
+            bits.append(f"三围约 {trio[0]:g}/{trio[1]:g}/{trio[2]:g} cm")
+        if body.get("build"):
+            bits.append("体型" + str(body["build"]))
+        if bits:
+            parts.append("【体型参考】此人是：" + "，".join(bits) + "。据此还原身材与穿衣合身度，但以照片为准。")
+        if body.get("notes"):
+            parts.append("【其他特征】" + str(body["notes"]).strip())
+    parts.append(garment)
+    if extra and extra.strip():
+        parts.append("【附加要求】" + extra.strip())
+    return "\n".join(parts)
 
 _MARKDOWN_DATA_URI = re.compile(
     r"data:image/[a-zA-Z0-9.+-]+;base64,([A-Za-z0-9+/=\s]+)", re.I
@@ -162,32 +201,30 @@ def _data_uri(b64: str, mime: str = "image/jpeg") -> str:
     return f"data:{mime};base64,{b64}"
 
 
-def _payload(cfg: TryOnConfig, person_b64: str, garment_b64: str) -> dict:
-    person = _data_uri(person_b64)
-    garment = _data_uri(garment_b64)
+def _payload(cfg: TryOnConfig, person_b64_list: list[str], garment_b64: str, prompt: str, preserve_face: bool) -> dict:
+    all_uri = [_data_uri(b) for b in person_b64_list] + [_data_uri(garment_b64)]
     if cfg.mode == "chat":
         payload = {
             "model": cfg.model,
             "messages": [
                 {
                     "role": "user",
-                    "content": [
-                        {"type": "text", "text": cfg.prompt},
-                        {"type": "image_url", "image_url": {"url": person}},
-                        {"type": "image_url", "image_url": {"url": garment}},
-                    ],
+                    "content": [{"type": "text", "text": prompt}]
+                    + [{"type": "image_url", "image_url": {"url": u}} for u in all_uri],
                 }
             ],
         }
     else:
         payload = {
             "model": cfg.model,
-            "prompt": cfg.prompt,
+            "prompt": prompt,
             "n": 1,
             "size": cfg.size,
-            "image": [person, garment],
+            "image": all_uri,
             "response_format": "b64_json",
         }
+        if preserve_face:
+            payload["input_fidelity"] = "high"
     payload.update(cfg.extra_body)
     return payload
 
@@ -254,19 +291,37 @@ def _extract_image(data: dict, cfg: TryOnConfig) -> bytes:
     )
 
 
-def generate(person_b64: str, garment_b64: str, cfg: TryOnConfig | None = None) -> bytes:
-    """Return the generated try-on image as raw bytes (PNG/JPEG)."""
+def generate(
+    person_b64: str | list[str],
+    garment_b64: str,
+    cfg: TryOnConfig | None = None,
+    body: dict | None = None,
+    preserve_face: bool = True,
+    extra_prompt: str | None = None,
+) -> bytes:
+    """Return the generated try-on image as raw bytes (PNG/JPEG).
+
+    `person_b64` accepts one base64 string (backward compatible) or a list of
+    1..6 photos of the same person for better identity consistency.
+    """
     cfg = cfg or TryOnConfig.from_env()
     cfg.validate()
+    persons = [person_b64] if isinstance(person_b64, str) else list(person_b64)[:6]
+    if not persons:
+        raise ValueError("至少需要一张本人照片")
+    prompt = build_tryon_prompt(len(persons), body, extra_prompt or None)
     url = _build_url(cfg)
     if cfg.mode == "edits":
         # /images/edits expects multipart with repeated `image[]` parts.
-        person = base64.b64decode(person_b64)
-        garment = base64.b64decode(garment_b64)
-        fields = {"model": cfg.model, "prompt": cfg.prompt, "n": "1", "size": cfg.size}
+        fields = {"model": cfg.model, "prompt": prompt, "n": "1", "size": cfg.size}
+        if preserve_face:
+            fields["input_fidelity"] = "high"
         fields.update({k: str(v) for k, v in cfg.extra_body.items()})
-        files = [("image[]", "person.png", person), ("image[]", "garment.png", garment)]
+        files = [
+            ("image[]", f"person{i + 1}.png", base64.b64decode(b))
+            for i, b in enumerate(persons)
+        ] + [("image[]", "garment.png", base64.b64decode(garment_b64))]
         data = _post_multipart(cfg, url, fields, files)
     else:
-        data = _post_json(cfg, url, _payload(cfg, person_b64, garment_b64))
+        data = _post_json(cfg, url, _payload(cfg, persons, garment_b64, prompt, preserve_face))
     return _extract_image(data, cfg)

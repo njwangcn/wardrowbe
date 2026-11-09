@@ -4,6 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
+from app.config import get_settings
 from app.models.user import User
 from app.services.weather_service import GeocodingServiceError, WeatherService, WeatherServiceError
 from app.utils.auth import get_current_user
@@ -75,10 +76,15 @@ async def get_current_weather(
             lat, lon, _ = geocoded
 
     if lat is None or lon is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Location not set. Please provide coordinates or set your location in settings.",
-        )
+        # Fall back to an optional server-side default (preview/demo friendly).
+        settings = get_settings()
+        if settings.default_weather_lat is not None and settings.default_weather_lon is not None:
+            lat, lon = settings.default_weather_lat, settings.default_weather_lon
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Location not set. Please provide coordinates or set your location in settings.",
+            )
 
     try:
         weather = await weather_service.get_current_weather(float(lat), float(lon))
@@ -130,10 +136,14 @@ async def get_weather_forecast(
             lat, lon, _ = geocoded
 
     if lat is None or lon is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Location not set. Please provide coordinates or set your location in settings.",
-        )
+        settings = get_settings()
+        if settings.default_weather_lat is not None and settings.default_weather_lon is not None:
+            lat, lon = settings.default_weather_lat, settings.default_weather_lon
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Location not set. Please provide coordinates or set your location in settings.",
+            )
 
     try:
         forecast = await weather_service.get_daily_forecast(float(lat), float(lon), days)

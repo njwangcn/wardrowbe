@@ -13,6 +13,10 @@
 
 x-backend-env: &backend-env
   DEBUG: "true"
+  # 预览默认坐标：新用户没设位置时天气接口不再报 400（可在设置里覆盖）。
+  # 默认西安；改这里或用 DEFAULT_WEATHER_LAT/LON 覆盖。上游不配则行为不变。
+  DEFAULT_WEATHER_LAT: ${DEFAULT_WEATHER_LAT:-34.26}
+  DEFAULT_WEATHER_LON: ${DEFAULT_WEATHER_LON:-108.94}
   PUID: ${PUID:-1000}
   PGID: ${PGID:-1000}
   DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-wardrobe}:${POSTGRES_PASSWORD:-wardrobe}@postgres:5432/${POSTGRES_DB:-wardrobe}
