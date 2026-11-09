@@ -57,6 +57,16 @@
 - 记得用完在 Codespaces 列表里 **Stop**，别让小时数空跑。
 - 停止后数据仍在（volume 保留），下次重启继续用。
 
+**如果 `xxx-3000.app.github.dev` 打不开**（国内网络常见，域名解析被污染或超时）：在 Codespace 终端跑
+
+```bash
+bash deploy/codespaces/tunnel.sh
+```
+
+它会起一条免费的 Cloudflare 快速隧道（免注册），打印一个 `https://xxx.trycloudflare.com` 地址，
+并自动把 `NEXTAUTH_URL` 换成这个地址、重启前端，直接用新地址登录即可。
+隧道进程随实例存活，Codespace 重启后重跑一次就行；隧道地址每次会变，`tunnel.sh stop` 可关闭。
+
 其他免费 PaaS（Render / Railway / Fly / Koyeb / Zeabur）**都不推荐**：要么免费层不支持 Docker、要么 512MB 内存塞不下 Postgres+Redis+前后端、要么要绑信用卡、要么 Postgres 免费库 30 天就过期、要么 15 分钟就休眠。这套是 6 容器全栈，不是一个能塞进免费 Web Service 的单进程应用。
 
 ---
